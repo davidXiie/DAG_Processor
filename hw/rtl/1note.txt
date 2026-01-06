@@ -1,0 +1,22 @@
+1. 核心计算与数据通路 (Datapath Core)这是硬件“干活”的地方，对应论文 Figure 5(a) 的上半部分。
+datapath_top.sv功能： 数据通路顶层模块。分析： 它应该是将 PE 树 (alu_trees)、交叉开关 (crossbar) 和寄存器堆 (register_banks) 实例化并连接在一起的容器。所有的核心数据流动都在这里定义。
+alu_trees.sv功能： PE 树状阵列 (Tree-structured Datapath)。对应论文： 对应论文里的 PE Trees。细节： 这里面应该实现了 $T$ 棵深度为 $D$ 的二叉树，以及 PE 的加/乘运算逻辑和 Bypass（旁路）逻辑 1。
+crossbar.sv功能： 输入互联网络 (Input Interconnect)。对应论文： 对应论文提到的 Input Crossbar。细节： 这是一个 $B \times B$ 的全纵横开关，负责把寄存器读出的数据路由到任意 PE 输入端口 2。
+write_back_logic.sv功能： 写回逻辑与输出互联 (Output Interconnect)。对应论文： 对应论文 Figure 5(d) 中的 Priority encoder 和 Write addr generation。细节： 这个文件非常关键，它应该包含了自动写地址生成的逻辑（优先编码器），负责计算数据应该写到寄存器 Bank 的哪个空闲位置。同时也包含将 PE 输出路由回 Bank 的 Mux 逻辑 3。
+
+2. 存储单元 (Memory & Registers)对应论文 Figure 5(a) 的下半部分和数据存储器。
+register_banks.sv / register_banks_sram.sv / register_banks_backup.sv功能： 寄存器堆 (Shared Register File)。对应论文： 对应 $B$ Parallel Banks。细节： register_banks.sv 应该是核心实现，包含了 $B$ 个独立编址的 Bank。这里面会维护每个寄存器的 valid 位（用于自动写逻辑）。_sram 后缀的版本可能是用 SRAM 宏块实现的版本，用于流片或 FPGA 映射。
+mem_model.sv功能： 片上数据存储器模型 (Data Memory)。对应论文： 对应 Data memory (Figure 5b)。细节： 用于存放向量数据 ($b, x, L_{values}$)，响应 load 和 store 指令。
+
+3. 指令流与解码 (Instruction Front-end)对应论文 Figure 7 和 Figure 5(a) 左侧的控制逻辑。
+instr_decd.sv功能： 指令解码器 (Decoder)。对应论文： 对应 Figure 7(b) 中的 Decoder。细节： 负责解析变长指令，提取出控制信号（如 ALU 操作码、读地址、Copy 路由信号等）。
+instr_decd_pkg.sv功能： 指令定义包。细节： 定义了各种指令（exec, load, copy 等）的 Opcode 和位宽结构。instr_mem_addr_gen.sv功能： 指令地址生成。对应论文： 对应 Figure 7(b) 中的 Shifter 和地址逻辑。细节： 由于指令是变长的且紧凑打包，需要逻辑来计算下一条指令在内存中的偏移量。
+pipelined_control.sv / control_top.sv功能： 流水线控制逻辑。对应论文： 对应论文提到的 Pipelining of control signals。细节： 因为 PE 树有 $D$ 级流水线，解码出的控制信号（如写使能）必须经过相应的延时（打拍）才能与数据同步到达写回阶段。
+
+4. 基础组件与定义 (Infrastructure)
+common_pkg.sv / common_pkg_SCRIPT.sv功能： 全局参数定义。细节： 这里面应该定义了最关键的硬件参数：$D$（树深）、$B$（Bank数）、$R$（寄存器数）。修改这里可以改变生成的硬件规模。
+basic_blocks.sv / module_library.sv功能： 基础模块库。细节： 包含通用的加法器、乘法器、多路选择器 (Mux)、触发器 (DFF) 等底层单元。
+pru_sync.sv功能： 同步单元 (Sync Unit)。对应论文： 对应 Figure 2 中的 Sync unit。细节： 可能用于多核之间的同步或与 Host 主机的通信握手。
+
+
+建议阅读顺序如果您想深入研究代码，建议按以下顺序阅读：common_pkg.sv: 先看参数定义，理解数据位宽和架构参数。datapath_top.sv: 看顶层连线，建立全局视图。alu_trees.sv: 看计算核心怎么实现的。register_banks.sv: 看独立寻址和 Valid 位怎么维护。write_back_logic.sv: 这是难点，看优先编码器（Priority Encoder）怎么实现自动写地址。instr_decd.sv: 看变长指令怎么解析。
